@@ -1,44 +1,50 @@
 package main
 
 import (
+	"io/fs"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 )
 
 func main() {
 	dirPath := "." // 当前目录
-	mergeSplitPDFsInDirectory(dirPath)
+	mergeSplitPDFsRecursively(dirPath)
 }
 
-func mergeSplitPDFsInDirectory(dirPath string) {
-	files, err := ioutil.ReadDir(dirPath)
+func mergeSplitPDFsRecursively(root string) {
+	splitFiles := make(map[string][]string)
+
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err // 若有访问错误，返回它
+		}
+		if d.IsDir() {
+			return nil // 忽略目录
+		}
+		fileName := d.Name()
+		if strings.Contains(fileName, ".pdf.") {
+			baseName := strings.Split(fileName, ".pdf.")[0] + ".pdf"
+			basePath := filepath.Join(filepath.Dir(path), baseName)
+			splitFiles[basePath] = append(splitFiles[basePath], path)
+		}
+		return nil
+	})
+
 	if err != nil {
 		panic(err)
 	}
 
-	splitFiles := make(map[string][]string)
-
-	for _, file := range files {
-		if file.IsDir() {
-			continue
-		}
-		fileName := file.Name()
-		if strings.Contains(fileName, ".pdf.") {
-			baseName := strings.Split(fileName, ".pdf.")[0] + ".pdf"
-			splitFiles[baseName] = append(splitFiles[baseName], fileName)
-		}
-	}
-
-	for baseName, parts := range splitFiles {
-		sort.Strings(parts) // 确保文件顺序正确
-		mergeFiles(baseName, parts)
+	for basePath, parts := range splitFiles {
+		sort.Strings(parts)
+		mergeFiles(basePath, parts)
 	}
 }
 
-func mergeFiles(baseName string, parts []string) {
-	mergedFile, err := os.Create(baseName)
+func mergeFiles(basePath string, parts []string) {
+	mergedFile, err := os.Create(basePath)
 	if err != nil {
 		panic(err)
 	}
